@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+# Steve Willoughby <nr-swilloughby@newrelic.com>
+#
+# Show a list of all integration package versions
+# This should be run from the base newrelic go-agent code
+# tree root. It looks for all the packages by scanning the
+# repo for tags of the form "v3/integrations/..." to find
+# the lastest version of each.
+#
+# Then it goes into the integration source directory and reads
+# the go.mod file to see what version of the Go Agent is listed
+# as a dependency, as well as the minimum Go language version and
+# the version of the integration's 3rd party package listed in the go.mod
+# files.
+#
+# This information is then reported out in human-friendly tabular form.
+#
+import semver
+import subprocess
+import sys
+import re
+from   prettytable import PrettyTable
+
+package_version = {}
+
+#
+# If the 3rd party package that is the target of the integration cannot be
+# found simply by removing 'nr' from its name, we'll need a hint. This dictionary
+# maps the name of a New Relic integration with the package name we should look for
+# in the go.mod file, or the empty string if there is no such package.
+#
+package_hints = {
+    'logcontext-v2/logWriter': '',
+    'logcontext-v2/nrlogrus': 'github.com/sirupsen/logrus',
+    'logcontext-v2/nrwriter': '',
+    'logcontext-v2/nrzerolog': 'github.com/rs/zerolog',
+    'logcontext-v2/zerologWriter': 'github.com/rs/zerolog',
+    'logcontext/nrlogrusplugin': 'github.com/sirupsen/logrus',
+    'nrawssdk-v1': 'github.com/aws/aws-sdk-go',
+    'nrawssdk-v2': 'github.com/aws/aws-sdk-go-v2',
+    'nrb3': '',
+    'nrecho-v3': 'github.com/labstack/echo',
+    'nrecho-v4': 'github.com/labstack/echo/v4',
+    'nrelasticsearch-v7': 'github.com/elastic/go-elasticsearch/v7',
+    'nrgorilla': 'github.com/gorilla/mux',
+    'nrgraphgophers': 'github.com/graph-gophers/graphql-go',
+    'nrgraphqlgo': 'github.com/graphql-go/graphql',
+    'nrgrpc': 'google.golang.org/grpc',
+    'nrmongo': 'go.mongodb.org/mongo-driver',
+    'nrpgx': 'github.com/jackc/pgx/v4',
+    'nrpgx5': 'github.com/jackc/pgx/v5',
+    'nrpkgerrors': 'github.com/pkg/errors',
+    'nrredis-v7': 'github.com/go-redis/redis/v7',
+    'nrredis-v8': 'github.com/go-redis/redis/v8',
+    'nrredis-v9': 'github.com/redis/go-redis/v9',
+    'nrzap': 'go.uber.org/zap',
+}
+
+packages = PrettyTable()
+packages.align = 'l'
+packages.field_names = ['Integration Name', 'Integration Version', 'Go Version', 'Package', 'Package Version', 'Agent Version']
+
+tags = subprocess.run(['git', 'tag', '--list', 'v3/integrations/*'], capture_output=True, text=True)
+if tags.returncode != 0:
+    print(f"git tags errored out with code {tags.returncode} output {tags.stdout}")
+    sys.exit(0)
+
+tagpat = re.compile(r'v3/integrations/(.*?)/v(.*)')
+for tag in tags.stdout.split('\n'):
+    m = tagpat.search(tag)
+    if m:
+        if m.group(1) not in package_version or semver.compare(m.group(2), package_version[m.group(1)]) > 0:
+            package_version[m.group(1)] = m.group(2)
+
+goversion = re.compile(r'^go\s+(\S*)')
+agentversion = re.compile(r'^\s*github.com/newrelic/go-agent/v3\s+v(.*)')
+for k in sorted(package_version):
+    go = 'N/A'
+    pkg = '***ERROR***'
+    pkgv = 'N/A'
+    agent = 'N/A'
+    if k in package_hints:
+        if package_hints[k]:
+            p = package_hints[k]
+        else:
+            p = '--NONE--'
+            pkg = 'N/A'
+    else:
+        p = f'github.com/\\S*/\\S*{k.replace("nr","")}\\S*'
+    with open(f'v3/integrations/{k}/go.mod') as modfile:
+        for line in modfile:
+            m = agentversion.search(line)
+            if m:
+                agent = m.group(1)
+                continue
+
+            m = goversion.search(line)
+            if m:
+                go = m.group(1)
+                continue
+            m = re.search(f'^\\s*({p})\\s+v(.*)', line)
+            if m:
+                pkg = m.group(1)
+                pkgv = m.group(2)
+                break
+
+    packages.add_row([k, package_version[k], go, pkg, pkgv, agent])
+
+print(packages)
