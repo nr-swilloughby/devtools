@@ -83,7 +83,7 @@ for k in sorted(package_version):
         if package_hints[k]:
             p = package_hints[k]
         else:
-            p = '--NONE--'
+            p = None
             pkg = 'N/A'
     else:
         p = f'github.com/\\S*/\\S*{k.replace("nr","")}\\S*'
@@ -98,11 +98,13 @@ for k in sorted(package_version):
             if m:
                 go = m.group(1)
                 continue
-            m = re.search(f'^\\s*({p})\\s+v(.*)', line)
-            if m:
-                pkg = m.group(1)
-                pkgv = m.group(2)
-                break
+
+            if p:
+                m = re.search(f'^\\s*({p})\\s+v(.*)', line)
+                if m:
+                    pkg = m.group(1)
+                    pkgv = m.group(2)
+                    continue
 
     packages.add_row([k, package_version[k], go, pkg, pkgv, agent])
 
