@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+# Steve Willoughby <nr-swilloughby@newrelic.com>
+#
+cur_agent_version='3.29.0'
+minimum_go_version='1.19'
+import os
+import os.path
+import re
+
+for root, dirs, files in os.walk('.'):
+    for f in files:
+        if f == 'go.mod':
+            target = os.path.join(root, f)
+            os.rename(target, target+'.bak')
+            with open(target+'.bak') as src:
+                with open(target, 'w') as dst:
+                    block = hold = False
+                    replace_line = False
+                    for line in src:
+                        if not line.strip():
+                            dst.write('\n')
+                            continue
+
+                        if line.strip() == 'require (':
+                            hold=True
+                            block=True
+                            continue
+
+                        if line.strip() == ')':
+                            if block and hold:
+                                block = hold = False
+                                continue
+                            block = hold = False
+
+                        if '// indirect' in line:
+                            continue
+
+                        if block:
+                            if hold:
+                                dst.write('require (\n')
+                                hold = False
+
+                        if re.search(r'^.*go\s+\d+\.\d+', line):
+                            dst.write(f'go {minimum_go_version}\n')
+                            continue
+
+                        if re.search(r'newrelic/go-agent/v3\s+v(\d+\.\d+\.\d+)', line):
+                            line = re.sub(r'newrelic/go-agent/v3\s+v(\d+\.\d+\.\d+)', 
+                                       f'newrelic/go-agent/v3 v{cur_agent_version}',
+                                       line)
+                            replace_line = True
+
+                        if re.search(r'replace\s+github.com/newrelic/go-agent/v3\s+', line):
+                            continue
+
+                        dst.write(line)
+
+                    if replace_line:
+                        my_path = target
+                        back_list = []
+                        while my_path:
+                            my_path, this = os.path.split(my_path)
+                            if this == 'integrations' or this == '.':
+                                break
+                            back_list.append('..')
+                        else:
+                            back_list = None    # something went wrong, don't add the line
+
+                        if back_list:
+                            dst.write('replace github.com/newrelic/go-agent/v3 => ' +
+                                      os.path.join(*back_list) + '\n')
