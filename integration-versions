@@ -32,12 +32,16 @@ package_version = {}
 package_hints = {
     'logcontext-v2/logWriter': '',
     'logcontext-v2/nrlogrus': 'github.com/sirupsen/logrus',
+    'logcontext-v2/nrslog': '',
     'logcontext-v2/nrwriter': '',
+    'logcontext-v2/nrzap': 'go.uber.org/zap',
     'logcontext-v2/nrzerolog': 'github.com/rs/zerolog',
     'logcontext-v2/zerologWriter': 'github.com/rs/zerolog',
     'logcontext/nrlogrusplugin': 'github.com/sirupsen/logrus',
+    'nrawsbedrock': 'github.com/aws/aws-sdk-go-v2/service/bedrockruntime',
     'nrawssdk-v1': 'github.com/aws/aws-sdk-go',
     'nrawssdk-v2': 'github.com/aws/aws-sdk-go-v2',
+    'nrgochi': '',
     'nrb3': '',
     'nrecho-v3': 'github.com/labstack/echo',
     'nrecho-v4': 'github.com/labstack/echo/v4',
@@ -53,6 +57,8 @@ package_hints = {
     'nrredis-v7': 'github.com/go-redis/redis/v7',
     'nrredis-v8': 'github.com/go-redis/redis/v8',
     'nrredis-v9': 'github.com/redis/go-redis/v9',
+    'nrsecurityagent': 'github.com/newrelic/csec-go-agent',
+    'nrslog': '',
     'nrzap': 'go.uber.org/zap',
 }
 
@@ -69,6 +75,12 @@ tagpat = re.compile(r'v3/integrations/(.*?)/v(.*)')
 for tag in tags.stdout.split('\n'):
     m = tagpat.search(tag)
     if m:
+        try:
+            semver.Version.parse(m.group(2))
+        except ValueError as e:
+            print(f"(ignoring bogus version tag \"{m.group(2)}\")")
+            continue
+
         if m.group(1) not in package_version or semver.compare(m.group(2), package_version[m.group(1)]) > 0:
             package_version[m.group(1)] = m.group(2)
 
